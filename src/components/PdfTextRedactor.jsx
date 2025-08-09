@@ -28,6 +28,7 @@ import {
   Spinner,
 } from './PdfTextRedactor.styled';
 import { redactCountry } from '../utils/redact';
+import { textContentToPlainText } from '../utils/pdfText';
 
 // Configure pdf.js worker so parsing runs off the main thread
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
@@ -70,14 +71,15 @@ export default function PdfTextRedactor() {
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const pdf = await loadingTask.promise;
 
-      let fullText = '';
+      const pageTexts = [];
       for (let i = 1; i <= pdf.numPages; i += 1) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        const strings = content.items.map((it) => (typeof it.str === 'string' ? it.str : ''));
-        fullText += strings.join(' ') + (i < pdf.numPages ? '\n\n' : '');
+        const pageText = textContentToPlainText(content);
+        pageTexts.push(pageText);
       }
 
+      const fullText = pageTexts.join('\n\n');
       setPdfText(fullText);
       setDisplayText(fullText);
     } catch (e) {
