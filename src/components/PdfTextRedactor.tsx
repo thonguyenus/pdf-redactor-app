@@ -69,11 +69,12 @@ export default function PdfTextRedactor() {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      // Store a copy in Uint8Array to avoid detached ArrayBuffer issues
-      const copyBytes = new Uint8Array(arrayBuffer.slice(0));
-      setOriginalBytes(copyBytes);
+      // Create two independent copies: one to keep (for redaction), one for pdf.js
+      const storedBytes = new Uint8Array(arrayBuffer.slice(0));
+      const pdfJsBytes = new Uint8Array(arrayBuffer.slice(0));
+      setOriginalBytes(storedBytes);
 
-      const loadingTask = pdfjsLib.getDocument({ data: copyBytes });
+      const loadingTask = pdfjsLib.getDocument({ data: pdfJsBytes });
       const pdf = await loadingTask.promise;
 
       const pageTexts: string[] = [];
