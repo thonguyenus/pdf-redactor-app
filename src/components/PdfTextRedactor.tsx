@@ -42,7 +42,7 @@ export default function PdfTextRedactor() {
   const [error, setError] = useState<string>('');
   const [isRedacted, setIsRedacted] = useState<boolean>(false);
 
-  const [originalBytes, setOriginalBytes] = useState<ArrayBuffer | null>(null);
+  const [originalBytes, setOriginalBytes] = useState<Uint8Array | null>(null);
   const [redactedBytes, setRedactedBytes] = useState<Uint8Array | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -69,9 +69,11 @@ export default function PdfTextRedactor() {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      setOriginalBytes(arrayBuffer);
+      // Store a copy in Uint8Array to avoid detached ArrayBuffer issues
+      const copyBytes = new Uint8Array(arrayBuffer.slice(0));
+      setOriginalBytes(copyBytes);
 
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const loadingTask = pdfjsLib.getDocument({ data: copyBytes });
       const pdf = await loadingTask.promise;
 
       const pageTexts: string[] = [];
@@ -196,13 +198,13 @@ export default function PdfTextRedactor() {
                   accept="application/pdf"
                   onChange={onInputChange}
                 />
-                <LoadingOverlay show={isLoading}>
+                <LoadingOverlay $show={isLoading}>
                   <Spinner />
                 </LoadingOverlay>
               </Dropzone>
             </div>
 
-            <ErrorBox role="alert" show={Boolean(error)}>
+            <ErrorBox role="alert" $show={Boolean(error)}>
               <div>⚠️</div>
               <div>{error}</div>
             </ErrorBox>

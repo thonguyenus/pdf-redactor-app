@@ -163,8 +163,8 @@ export const GhostButton = styled(Button)`
   }
 `;
 
-export const ErrorBox = styled.div<{ show?: boolean; }>`
-  display: ${props => (props.show ? 'flex' : 'none')};
+export const ErrorBox = styled.div<{ $show?: boolean; }>`
+  display: ${props => (props.$show ? 'flex' : 'none')};
   align-items: flex-start;
   gap: 10px;
   padding: 12px 14px;
@@ -222,10 +222,10 @@ export const fade = keyframes`
   100% { opacity: 1; transform: translateY(0); }
 `;
 
-export const LoadingOverlay = styled.div<{ show?: boolean; }>`
+export const LoadingOverlay = styled.div<{ $show?: boolean; }>`
   position: absolute;
   inset: 0;
-  display: ${props => (props.show ? 'grid' : 'none')};
+  display: ${props => (props.$show ? 'grid' : 'none')};
   place-items: center;
   background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(2px);

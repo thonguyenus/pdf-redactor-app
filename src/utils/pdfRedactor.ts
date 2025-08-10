@@ -7,8 +7,10 @@ export type RedactResult = { bytes: Uint8Array; found: boolean };
  * inside the input PDF. Returns new PDF bytes and whether any matching field
  * was found.
  */
-export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer, maskValue = '██████'): Promise<RedactResult> {
-  const pdfDoc = await PDFDocument.load(inputBytes);
+export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer | Uint8Array, maskValue = '██████'): Promise<RedactResult> {
+  // Ensure we pass a stable copy to pdf-lib
+  const stable = inputBytes instanceof Uint8Array ? inputBytes : new Uint8Array(inputBytes.slice(0));
+  const pdfDoc = await PDFDocument.load(stable);
 
   let found = false;
   try {

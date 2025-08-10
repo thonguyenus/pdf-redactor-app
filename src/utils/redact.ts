@@ -8,19 +8,19 @@ export function redactCountry(text: string): string {
   let result = text;
 
   // Pattern 1: key-value pairs e.g. "country: Vietnam" or "Country = US"
-  result = result.replace(/(country\s*[:=]\s*)([^\r\n,;]+)/gi, (m, p1, p2) => {
+  result = result.replace(/(please\s*[:=]\s*)([^\r\n,;]+)/gi, (m, p1, p2) => {
     const blocks = '█'.repeat(p2.trim().length || 6);
     return `${p1}${blocks}`;
   });
 
   // Pattern 2: JSON-like e.g. '"country": "Vietnam"'
-  result = result.replace(/("country"\s*:\s*")(.*?)(")/gi, (m, p1, p2, p3) => {
+  result = result.replace(/("please"\s*:\s*")(.*?)(")/gi, (m, p1, p2, p3) => {
     const blocks = '█'.repeat(p2.trim().length || 6);
     return `${p1}${blocks}${p3}`;
   });
 
   // Pattern 3: Standalone lines e.g. "Country Vietnam"
-  result = result.replace(/(country\s+)([^\r\n]+)/gi, (m, p1, p2) => {
+  result = result.replace(/(please\s+)([^\r\n]+)/gi, (m, p1, p2) => {
     const blocks = '█'.repeat(p2.trim().length || 6);
     return `${p1}${blocks}`;
   });
