@@ -22,12 +22,25 @@ function matchesCountryName(field: any): boolean {
   }
 }
 
+// pdf-lib StandardFonts use WinAnsi. Keep mask ASCII-only to avoid encoding errors.
+function toAsciiMask(input: string, fallback = 'REDACTED'): string {
+  const ascii = Array.from(input)
+    .map((ch) => {
+      const code = ch.codePointAt(0) ?? 32;
+      // printable ASCII range 32..126
+      return code >= 32 && code <= 126 ? ch : '#';
+    })
+    .join('');
+  const trimmed = ascii.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
 /**
  * Redact (mask) the value of the form field named "country" (case-insensitive)
  * inside the input PDF. Returns new PDF bytes and whether any matching field
  * was found.
  */
-export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer | Uint8Array, maskValue = '██████'): Promise<RedactResult> {
+export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer | Uint8Array, maskValue = 'REDACTED'): Promise<RedactResult> {
   const stable = inputBytes instanceof Uint8Array ? inputBytes : new Uint8Array(inputBytes.slice(0));
   const pdfDoc = await PDFDocument.load(stable);
 
@@ -37,21 +50,23 @@ export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer | Uint8Arr
     const fields = form.getFields();
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
+    const safeMask = toAsciiMask(maskValue);
+
     for (const field of fields) {
       if (!matchesCountryName(field)) continue;
 
       const anyField: any = field as any;
       // Text-like fields
       if (typeof anyField.setText === 'function') {
-        anyField.setText(maskValue);
+        anyField.setText(safeMask);
         found = true;
         continue;
       }
       // Dropdown / OptionList-like fields
       if (typeof anyField.setOptions === 'function' && typeof anyField.select === 'function') {
         try {
-          anyField.setOptions([maskValue]);
-          anyField.select(maskValue);
+          anyField.setOptions([safeMask]);
+          anyField.select(safeMask);
           found = true;
           continue;
         } catch {
