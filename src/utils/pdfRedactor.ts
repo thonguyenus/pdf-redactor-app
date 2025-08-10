@@ -23,15 +23,34 @@ function matchesCountryName(field: any): boolean {
   }
 }
 
-async function loadBlockCapableFont(pdfDoc: PDFDocument) {
+async function loadBlockCapableFont(pdfDoc: PDFDocument): Promise<{ font: any; supportsBlock: boolean }> {
   try {
     pdfDoc.registerFontkit(fontkit as any);
-    const url = 'https://fonts.gstatic.com/s/notosans/v30/o-0IIpQlx3QUlC5A4PNjhjRFS1x3.ttf';
-    const res = await fetch(url);
-    const fontBytes = await res.arrayBuffer();
-    return await pdfDoc.embedFont(new Uint8Array(fontBytes), { subset: false });
-  } catch (e) {
-    return await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    // Prefer local public asset to avoid CDN 404
+    const candidates = [
+      '/fonts/NotoSans-Regular.ttf',
+      '/NotoSans-Regular.ttf',
+    ];
+
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const fontBytes = await res.arrayBuffer();
+        const font = await pdfDoc.embedFont(new Uint8Array(fontBytes), { subset: false });
+        return { font, supportsBlock: true };
+      } catch {
+        // try next
+      }
+    }
+
+    // Fallback to Helvetica (no block support)
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    return { font, supportsBlock: false };
+  } catch {
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    return { font, supportsBlock: false };
   }
 }
 
@@ -47,10 +66,10 @@ function toAsciiMask(input: string, fallback = 'REDACTED'): string {
 }
 
 /**
- * Redact country field values in a PDF: text fields get block mask (using a
- * font that supports it), dropdown/list fields get ASCII mask to avoid WinAnsi
- * encode issues in their appearance providers. Appearances are updated per
- * field, then the form is flattened.
+ * Redact country field values in a PDF: text fields prefer block mask (if a
+ * block-capable font is available), otherwise fallback to ASCII mask; dropdown
+ * fields always use ASCII mask. Appearances are updated per field, then the
+ * form is flattened.
  */
 export async function redactCountryFieldInPdf(
   inputBytes: ArrayBuffer | Uint8Array,
@@ -64,21 +83,21 @@ export async function redactCountryFieldInPdf(
     const form = pdfDoc.getForm();
     const fields = form.getFields();
 
-    const blockFont = await loadBlockCapableFont(pdfDoc);
+    const { font: blockFont, supportsBlock } = await loadBlockCapableFont(pdfDoc);
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     const asciiMask = toAsciiMask(maskValue, 'REDACTED');
-    const blockMask = maskValue; // relies on blockFont supporting glyph
+    const blockMask = maskValue; // only safe if supportsBlock
 
     for (const field of fields) {
       if (!matchesCountryName(field)) continue;
       const anyField: any = field as any;
 
       if (typeof anyField.setText === 'function') {
-        anyField.setText(blockMask);
-        // Ensure this field uses the block-capable font
+        const mask = supportsBlock ? blockMask : asciiMask;
+        anyField.setText(mask);
         if (typeof anyField.updateAppearances === 'function') {
-          anyField.updateAppearances(blockFont);
+          anyField.updateAppearances(supportsBlock ? blockFont : helvetica);
         }
         found = true;
         continue;
@@ -99,8 +118,6 @@ export async function redactCountryFieldInPdf(
       }
     }
 
-    // Avoid form-wide update to prevent dropdown provider picking StandardFont
-    // and failing on block glyphs.
     form.flatten();
   } catch (e) {
     // ignore; will still save doc
