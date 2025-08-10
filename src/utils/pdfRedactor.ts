@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 
 export type RedactResult = { bytes: Uint8Array; found: boolean };
 
@@ -22,17 +23,19 @@ function matchesCountryName(field: any): boolean {
   }
 }
 
-// pdf-lib StandardFonts use WinAnsi. Keep mask ASCII-only to avoid encoding errors.
-function toAsciiMask(input: string, fallback = 'REDACTED'): string {
-  const ascii = Array.from(input)
-    .map((ch) => {
-      const code = ch.codePointAt(0) ?? 32;
-      // printable ASCII range 32..126
-      return code >= 32 && code <= 126 ? ch : '#';
-    })
-    .join('');
-  const trimmed = ascii.trim();
-  return trimmed.length > 0 ? trimmed : fallback;
+async function loadBlockCapableFont(pdfDoc: PDFDocument): Promise<ReturnType<PDFDocument['embedFont']>> {
+  try {
+    pdfDoc.registerFontkit(fontkit as any);
+    // Use Noto Sans Regular from a well-known CDN that includes block glyphs
+    // You can replace the URL below with your own hosted font if needed.
+    const url = 'https://fonts.gstatic.com/s/notosans/v30/o-0IIpQlx3QUlC5A4PNjhjRFS1x3.ttf';
+    const res = await fetch(url);
+    const fontBytes = await res.arrayBuffer();
+    return await pdfDoc.embedFont(new Uint8Array(fontBytes), { subset: false });
+  } catch (e) {
+    // Fallback to Helvetica if custom font fails
+    return await pdfDoc.embedFont(StandardFonts.Helvetica);
+  }
 }
 
 /**
@@ -40,7 +43,10 @@ function toAsciiMask(input: string, fallback = 'REDACTED'): string {
  * inside the input PDF. Returns new PDF bytes and whether any matching field
  * was found.
  */
-export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer | Uint8Array, maskValue = 'REDACTED'): Promise<RedactResult> {
+export async function redactCountryFieldInPdf(
+  inputBytes: ArrayBuffer | Uint8Array,
+  maskValue = '██████'
+): Promise<RedactResult> {
   const stable = inputBytes instanceof Uint8Array ? inputBytes : new Uint8Array(inputBytes.slice(0));
   const pdfDoc = await PDFDocument.load(stable);
 
@@ -48,25 +54,23 @@ export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer | Uint8Arr
   try {
     const form = pdfDoc.getForm();
     const fields = form.getFields();
-    const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    const safeMask = toAsciiMask(maskValue);
+    // Ensure font supports block glyph
+    const blockFont = await loadBlockCapableFont(pdfDoc);
 
     for (const field of fields) {
       if (!matchesCountryName(field)) continue;
 
       const anyField: any = field as any;
-      // Text-like fields
       if (typeof anyField.setText === 'function') {
-        anyField.setText(safeMask);
+        anyField.setText(maskValue);
         found = true;
         continue;
       }
-      // Dropdown / OptionList-like fields
       if (typeof anyField.setOptions === 'function' && typeof anyField.select === 'function') {
         try {
-          anyField.setOptions([safeMask]);
-          anyField.select(safeMask);
+          anyField.setOptions([maskValue]);
+          anyField.select(maskValue);
           found = true;
           continue;
         } catch {
@@ -75,7 +79,7 @@ export async function redactCountryFieldInPdf(inputBytes: ArrayBuffer | Uint8Arr
       }
     }
 
-    form.updateFieldAppearances(helvetica);
+    form.updateFieldAppearances(blockFont);
     form.flatten();
   } catch (e) {
     // ignore; will still save doc
