@@ -128,13 +128,18 @@ export const Button = styled.button`
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.05s ease, background 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.05s ease, background 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
 
   &:active {
     transform: translateY(1px);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.8;
   }
 `;
 
@@ -150,7 +155,6 @@ export const PrimaryButton = styled(Button)`
   &:disabled {
     background: #94a3b8;
     box-shadow: none;
-    cursor: not-allowed;
   }
 `;
 
@@ -245,4 +249,23 @@ export const Spinner = styled.div`
   border: 3px solid #cbd5e1;
   border-top-color: #0ea5e9;
   animation: ${spinnerAnim} 0.9s linear infinite;
+`;
+
+export const InlineSpinner = styled.span`
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  border-top-color: #0ea5e9;
+  display: inline-block;
+  animation: ${spinnerAnim} 0.9s linear infinite;
+`;
+
+export const StatusNote = styled.div`
+  font-size: 12px;
+  color: #0f766e;
+  background: #ecfdf5;
+  border: 1px solid #99f6e4;
+  padding: 8px 10px;
+  border-radius: 10px;
 `;

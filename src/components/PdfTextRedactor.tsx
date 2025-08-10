@@ -26,6 +26,8 @@ import {
   TextViewer,
   LoadingOverlay,
   Spinner,
+  InlineSpinner,
+  StatusNote,
 } from './PdfTextRedactor.styled';
 import { textContentToPlainText } from '../utils/pdfText';
 import { redactCountry } from '../utils/redact';
@@ -45,12 +47,15 @@ export default function PdfTextRedactor() {
   const [originalBytes, setOriginalBytes] = useState<Uint8Array | null>(null);
   const [redactedBytes, setRedactedBytes] = useState<Uint8Array | null>(null);
 
+  const [isRedactingPdf, setIsRedactingPdf] = useState<boolean>(false);
+  const [isPreparingDownload, setIsPreparingDownload] = useState<boolean>(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canCopy = useMemo(() => Boolean(displayText), [displayText]);
   const canRedactText = useMemo(() => Boolean(pdfText) && !isLoading, [pdfText, isLoading]);
-  const canRedactPdf = useMemo(() => Boolean(originalBytes) && !isLoading, [originalBytes, isLoading]);
-  const canDownload = useMemo(() => Boolean(redactedBytes), [redactedBytes]);
+  const canRedactPdf = useMemo(() => Boolean(originalBytes) && !isLoading && !isRedactingPdf, [originalBytes, isLoading, isRedactingPdf]);
+  const canDownload = useMemo(() => Boolean(redactedBytes) && !isPreparingDownload, [redactedBytes, isPreparingDownload]);
 
   // Handle file selection or drop
   const handleFile = useCallback(async (file: File | undefined | null) => {
@@ -139,7 +144,7 @@ export default function PdfTextRedactor() {
 
   const handleRedactPdf = useCallback(async () => {
     if (!originalBytes) return;
-    setIsLoading(true);
+    setIsRedactingPdf(true);
     setError('');
     try {
       const { bytes, found } = await redactCountryFieldInPdf(originalBytes);
@@ -152,7 +157,7 @@ export default function PdfTextRedactor() {
       console.error(e);
       setError('Không thể che field trong PDF.');
     } finally {
-      setIsLoading(false);
+      setIsRedactingPdf(false);
     }
   }, [originalBytes]);
 
@@ -164,16 +169,21 @@ export default function PdfTextRedactor() {
 
   const handleDownload = useCallback(() => {
     if (!redactedBytes) return;
-    const blob = new Blob([redactedBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const base = fileName?.replace(/\.pdf$/i, '') || 'document';
-    a.download = `${base}__redacted.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setIsPreparingDownload(true);
+    try {
+      const blob = new Blob([redactedBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const base = fileName?.replace(/\.pdf$/i, '') || 'document';
+      a.download = `${base}__redacted.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsPreparingDownload(false);
+    }
   }, [redactedBytes, fileName]);
 
   return (
@@ -218,10 +228,10 @@ export default function PdfTextRedactor() {
 
             <ActionsRow>
               <PrimaryButton onClick={handleRedactPdf} disabled={!canRedactPdf} title="Che field trong PDF">
-                Redact Country (PDF)
+                {isRedactingPdf ? (<><InlineSpinner /> Đang redact PDF...</>) : 'Redact Country (PDF)'}
               </PrimaryButton>
               <GhostButton onClick={handleDownload} disabled={!canDownload} title="Tải file đã che">
-                Download Redacted
+                {isPreparingDownload ? (<><InlineSpinner /> Đang chuẩn bị tải...</>) : 'Download Redacted'}
               </GhostButton>
               <GhostButton onClick={handleRedactText} disabled={!canRedactText} title="Ẩn trong text viewer">
                 Redact Country (Text)
@@ -230,6 +240,17 @@ export default function PdfTextRedactor() {
                 Hoàn tác
               </GhostButton>
             </ActionsRow>
+
+            {isRedactingPdf && (
+              <StatusNote>
+                Đang xử lý che field trong PDF. Vui lòng đợi...
+              </StatusNote>
+            )}
+            {redactedBytes && !isRedactingPdf && (
+              <StatusNote>
+                PDF đã được che. Bạn có thể tải xuống bằng nút "Download Redacted".
+              </StatusNote>
+            )}
           </UploadSection>
 
           <ViewerSection>
