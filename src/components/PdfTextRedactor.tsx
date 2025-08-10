@@ -40,20 +40,20 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
  * - Display text in a viewer with Copy and Redact actions
  */
 export default function PdfTextRedactor() {
-  const [pdfText, setPdfText] = useState('');
-  const [displayText, setDisplayText] = useState('');
-  const [fileName, setFileName] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [isRedacted, setIsRedacted] = useState(false);
+  const [pdfText, setPdfText] = useState<string>('');
+  const [displayText, setDisplayText] = useState<string>('');
+  const [fileName, setFileName] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
+  const [isRedacted, setIsRedacted] = useState<boolean>(false);
 
-  const fileInputRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canCopy = useMemo(() => Boolean(displayText), [displayText]);
   const canRedact = useMemo(() => Boolean(pdfText) && !isLoading, [pdfText, isLoading]);
 
   // Handle file selection or drop
-  const handleFile = useCallback(async (file) => {
+  const handleFile = useCallback(async (file: File | undefined | null) => {
     setError('');
     setIsRedacted(false);
 
@@ -91,8 +91,8 @@ export default function PdfTextRedactor() {
   }, []);
 
   const onInputChange = useCallback(
-    async (ev) => {
-      const file = ev.target.files?.[0];
+    async (ev: React.ChangeEvent<HTMLInputElement>) => {
+      const file = ev.target.files?.[0] ?? null;
       await handleFile(file);
       // Reset input so same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -101,7 +101,7 @@ export default function PdfTextRedactor() {
   );
 
   const onDrop = useCallback(
-    async (ev) => {
+    async (ev: React.DragEvent<HTMLLabelElement>) => {
       ev.preventDefault();
       const file = ev.dataTransfer.files?.[0];
       await handleFile(file);
@@ -109,7 +109,7 @@ export default function PdfTextRedactor() {
     [handleFile]
   );
 
-  const onDragOver = useCallback((ev) => {
+  const onDragOver = useCallback((ev: React.DragEvent<HTMLLabelElement>) => {
     ev.preventDefault();
   }, []);
 
