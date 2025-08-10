@@ -27,9 +27,11 @@ async function loadBlockCapableFont(pdfDoc: PDFDocument): Promise<{ font: any; s
   try {
     pdfDoc.registerFontkit(fontkit as any);
 
-    // Prefer local public asset to avoid CDN 404
+    // Prefer robust local fonts that include block glyph
     const candidates = [
+      '/fonts/DejaVuSans.ttf',
       '/fonts/NotoSans-Regular.ttf',
+      '/DejaVuSans.ttf',
       '/NotoSans-Regular.ttf',
     ];
 
@@ -45,7 +47,6 @@ async function loadBlockCapableFont(pdfDoc: PDFDocument): Promise<{ font: any; s
       }
     }
 
-    // Fallback to Helvetica (no block support)
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     return { font, supportsBlock: false };
   } catch {
