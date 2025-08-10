@@ -27,18 +27,13 @@ import {
   LoadingOverlay,
   Spinner,
 } from './PdfTextRedactor.styled';
-import { redactCountry } from '../utils/redact';
 import { textContentToPlainText } from '../utils/pdfText';
+import { redactCountry } from '../utils/redact';
+import { redactCountryFieldInPdf } from '../utils/pdfRedactor';
 
 // Configure pdf.js worker so parsing runs off the main thread
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc as any;
 
-/**
- * PdfTextRedactor
- * - Upload PDF file via click or drag & drop
- * - Parse text content in-browser using pdfjs-dist
- * - Display text in a viewer with Copy and Redact actions
- */
 export default function PdfTextRedactor() {
   const [pdfText, setPdfText] = useState<string>('');
   const [displayText, setDisplayText] = useState<string>('');
@@ -47,15 +42,21 @@ export default function PdfTextRedactor() {
   const [error, setError] = useState<string>('');
   const [isRedacted, setIsRedacted] = useState<boolean>(false);
 
+  const [originalBytes, setOriginalBytes] = useState<ArrayBuffer | null>(null);
+  const [redactedBytes, setRedactedBytes] = useState<Uint8Array | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canCopy = useMemo(() => Boolean(displayText), [displayText]);
-  const canRedact = useMemo(() => Boolean(pdfText) && !isLoading, [pdfText, isLoading]);
+  const canRedactText = useMemo(() => Boolean(pdfText) && !isLoading, [pdfText, isLoading]);
+  const canRedactPdf = useMemo(() => Boolean(originalBytes) && !isLoading, [originalBytes, isLoading]);
+  const canDownload = useMemo(() => Boolean(redactedBytes), [redactedBytes]);
 
   // Handle file selection or drop
   const handleFile = useCallback(async (file: File | undefined | null) => {
     setError('');
     setIsRedacted(false);
+    setRedactedBytes(null);
 
     if (!file) return;
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
@@ -68,10 +69,12 @@ export default function PdfTextRedactor() {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
+      setOriginalBytes(arrayBuffer);
+
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const pdf = await loadingTask.promise;
 
-      const pageTexts = [];
+      const pageTexts: string[] = [];
       for (let i = 1; i <= pdf.numPages; i += 1) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
@@ -94,7 +97,6 @@ export default function PdfTextRedactor() {
     async (ev: React.ChangeEvent<HTMLInputElement>) => {
       const file = ev.target.files?.[0] ?? null;
       await handleFile(file);
-      // Reset input so same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = '';
     },
     [handleFile]
@@ -126,16 +128,50 @@ export default function PdfTextRedactor() {
     }
   }, [displayText]);
 
-  const handleRedact = useCallback(() => {
+  const handleRedactText = useCallback(() => {
     const redacted = redactCountry(pdfText);
     setDisplayText(redacted);
     setIsRedacted(true);
   }, [pdfText]);
 
+  const handleRedactPdf = useCallback(async () => {
+    if (!originalBytes) return;
+    setIsLoading(true);
+    setError('');
+    try {
+      const { bytes, found } = await redactCountryFieldInPdf(originalBytes);
+      setRedactedBytes(bytes);
+      setIsRedacted(found);
+      if (!found) {
+        setError('Không tìm thấy field tên "country" trong PDF để che.');
+      }
+    } catch (e) {
+      console.error(e);
+      setError('Không thể che field trong PDF.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [originalBytes]);
+
   const handleReset = useCallback(() => {
     setDisplayText(pdfText);
     setIsRedacted(false);
+    setRedactedBytes(null);
   }, [pdfText]);
+
+  const handleDownload = useCallback(() => {
+    if (!redactedBytes) return;
+    const blob = new Blob([redactedBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const base = fileName?.replace(/\.pdf$/i, '') || 'document';
+    a.download = `${base}__redacted.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [redactedBytes, fileName]);
 
   return (
     <PageWrapper>
@@ -143,7 +179,7 @@ export default function PdfTextRedactor() {
         <Header>
           <div>
             <Title>PDF Text Redactor</Title>
-            <Subtitle>Upload PDF, trích xuất text và ẩn giá trị của field "country".</Subtitle>
+            <Subtitle>Upload PDF, trích xuất text, che field "country" và tải về.</Subtitle>
           </div>
         </Header>
 
@@ -178,11 +214,17 @@ export default function PdfTextRedactor() {
             )}
 
             <ActionsRow>
-              <PrimaryButton onClick={handleRedact} disabled={!canRedact} title="Ẩn giá trị country">
-                Redact Country
+              <PrimaryButton onClick={handleRedactPdf} disabled={!canRedactPdf} title="Che field trong PDF">
+                Redact Country (PDF)
               </PrimaryButton>
-              <GhostButton onClick={handleReset} disabled={!pdfText || isLoading || !isRedacted}>
-                Hoàn tác Redact
+              <GhostButton onClick={handleDownload} disabled={!canDownload} title="Tải file đã che">
+                Download Redacted
+              </GhostButton>
+              <GhostButton onClick={handleRedactText} disabled={!canRedactText} title="Ẩn trong text viewer">
+                Redact Country (Text)
+              </GhostButton>
+              <GhostButton onClick={handleReset} disabled={!pdfText || isLoading}>
+                Hoàn tác
               </GhostButton>
             </ActionsRow>
           </UploadSection>
