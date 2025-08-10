@@ -23,25 +23,34 @@ function matchesCountryName(field: any): boolean {
   }
 }
 
-async function loadBlockCapableFont(pdfDoc: PDFDocument): Promise<ReturnType<PDFDocument['embedFont']>> {
+async function loadBlockCapableFont(pdfDoc: PDFDocument) {
   try {
     pdfDoc.registerFontkit(fontkit as any);
-    // Use Noto Sans Regular from a well-known CDN that includes block glyphs
-    // You can replace the URL below with your own hosted font if needed.
     const url = 'https://fonts.gstatic.com/s/notosans/v30/o-0IIpQlx3QUlC5A4PNjhjRFS1x3.ttf';
     const res = await fetch(url);
     const fontBytes = await res.arrayBuffer();
     return await pdfDoc.embedFont(new Uint8Array(fontBytes), { subset: false });
   } catch (e) {
-    // Fallback to Helvetica if custom font fails
     return await pdfDoc.embedFont(StandardFonts.Helvetica);
   }
 }
 
+function toAsciiMask(input: string, fallback = 'REDACTED'): string {
+  const ascii = Array.from(input)
+    .map((ch) => {
+      const code = ch.codePointAt(0) ?? 32;
+      return code >= 32 && code <= 126 ? ch : '#';
+    })
+    .join('');
+  const trimmed = ascii.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
 /**
- * Redact (mask) the value of the form field named "country" (case-insensitive)
- * inside the input PDF. Returns new PDF bytes and whether any matching field
- * was found.
+ * Redact country field values in a PDF: text fields get block mask (using a
+ * font that supports it), dropdown/list fields get ASCII mask to avoid WinAnsi
+ * encode issues in their appearance providers. Appearances are updated per
+ * field, then the form is flattened.
  */
 export async function redactCountryFieldInPdf(
   inputBytes: ArrayBuffer | Uint8Array,
@@ -55,22 +64,33 @@ export async function redactCountryFieldInPdf(
     const form = pdfDoc.getForm();
     const fields = form.getFields();
 
-    // Ensure font supports block glyph
     const blockFont = await loadBlockCapableFont(pdfDoc);
+    const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const asciiMask = toAsciiMask(maskValue, 'REDACTED');
+    const blockMask = maskValue; // relies on blockFont supporting glyph
 
     for (const field of fields) {
       if (!matchesCountryName(field)) continue;
-
       const anyField: any = field as any;
+
       if (typeof anyField.setText === 'function') {
-        anyField.setText(maskValue);
+        anyField.setText(blockMask);
+        // Ensure this field uses the block-capable font
+        if (typeof anyField.updateAppearances === 'function') {
+          anyField.updateAppearances(blockFont);
+        }
         found = true;
         continue;
       }
+
       if (typeof anyField.setOptions === 'function' && typeof anyField.select === 'function') {
         try {
-          anyField.setOptions([maskValue]);
-          anyField.select(maskValue);
+          anyField.setOptions([asciiMask]);
+          anyField.select(asciiMask);
+          if (typeof anyField.updateAppearances === 'function') {
+            anyField.updateAppearances(helvetica);
+          }
           found = true;
           continue;
         } catch {
@@ -79,7 +99,8 @@ export async function redactCountryFieldInPdf(
       }
     }
 
-    form.updateFieldAppearances(blockFont);
+    // Avoid form-wide update to prevent dropdown provider picking StandardFont
+    // and failing on block glyphs.
     form.flatten();
   } catch (e) {
     // ignore; will still save doc
